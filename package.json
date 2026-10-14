@@ -1,0 +1,33 @@
+{
+  "name": "cwt-laser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CW&T galvo laser engraving app, connected to engraving.cwandt.com",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/opentype.js": "^1.3.10",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "dejavu-fonts-ttf": "^2.37.3",
+    "electron": "^44.7.2",
+    "electron-vite": "^6.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  },
+  "dependencies": {
+    "opentype.js": "^1.3.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}

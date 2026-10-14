@@ -1,0 +1,28 @@
+[
+  {
+    "sku": "*",
+    "name": "Fallback (centre of field)",
+    "jig": { "id": "none", "origin": [-30, -10], "rotation": 0, "outline": { "w": 60, "h": 20, "radius": 2 } },
+    "slots": {
+      "default": { "x": 2, "y": 2, "w": 56, "h": 16, "align": "center", "font": "DejaVuSans-Bold.ttf", "size": 4, "maxLines": 3, "layer": "text" }
+    },
+    "layers": {
+      "text": { "mode": "fill", "power": 30, "speed": 1000, "freq": 30, "qpulse": 100, "passes": 1,
+                "hatch": [{ "angle": 45, "spacing": 0.04 }], "bidir": true, "outline": true, "color": "#d9480f" }
+    }
+  },
+  {
+    "sku": "EXAMPLE-TAG",
+    "name": "Example tag (23.25 × 14.5 mm) — replace with a real product",
+    "jig": { "id": "jig-example", "origin": [-11.625, -7.25], "rotation": 0, "outline": { "w": 23.25, "h": 14.5, "radius": 1.5 } },
+    "slots": {
+      "engraving-text-66": { "x": 1.5, "y": 1.5, "w": 20.25, "h": 5.5, "align": "center", "font": "DejaVuSans-Bold.ttf", "size": 3, "layer": "text" },
+      "engraving-text-67": { "x": 1.5, "y": 7.5, "w": 20.25, "h": 5.5, "align": "center", "font": "DejaVuSansMono.ttf", "size": 2.2, "layer": "text" },
+      "default": { "x": 1.5, "y": 1.5, "w": 20.25, "h": 11.5, "align": "center", "font": "DejaVuSans-Bold.ttf", "size": 3, "maxLines": 2, "layer": "text" }
+    },
+    "layers": {
+      "text": { "mode": "fill", "power": 40, "speed": 1500, "freq": 30, "qpulse": 100, "passes": 2,
+                "hatch": [{ "angle": 0, "spacing": 0.03 }, { "angle": 90, "spacing": 0.03 }], "bidir": true, "outline": false, "color": "#d9480f" }
+    }
+  }
+]
