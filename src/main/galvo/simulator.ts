@@ -13,7 +13,11 @@ const sleep = (ms: number, signal: AbortSignal) =>
     }, { once: true })
   })
 
-/** Write the job as an SVG so a run can be inspected without a laser. */
+/**
+ * Write the job as an SVG so a run can be inspected without a laser.
+ * The blue field frame and centre cross are there to line the file up in
+ * LightBurn (centre the frame on the galvo field), then set the blue layer to not output.
+ */
 export function jobToSvg(job: Job, fieldSize: number): string {
   const h = fieldSize / 2
   const layers = job.layers
@@ -22,11 +26,17 @@ export function jobToSvg(job: Job, fieldSize: number): string {
       return `<path data-layer="${l.name}" d="${d}" fill="none" stroke="${l.settings.color ?? '#000'}" stroke-width="0.01"/>`
     })
     .join('\n')
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fieldSize}mm" height="${fieldSize}mm" viewBox="${-h} ${-h} ${fieldSize} ${fieldSize}">\n${layers}\n</svg>\n`
+  const guides =
+    `<g data-layer="field-guide" fill="none" stroke="#0000ff" stroke-width="0.1">` +
+    `<rect x="${-h}" y="${-h}" width="${fieldSize}" height="${fieldSize}"/>` +
+    `<path d="M-3 0H3M0 -3V3"/></g>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${fieldSize}mm" height="${fieldSize}mm" viewBox="${-h} ${-h} ${fieldSize} ${fieldSize}">\n${guides}\n${layers}\n</svg>\n`
 }
 
 export class SimulatorDriver implements GalvoDriver {
   readonly name = 'simulator'
+  /** Path of the most recent job SVG */
+  lastJobFile: string | null = null
   constructor(private outDir: string, private fieldSize: () => number) {}
 
   async connect() {}
@@ -40,6 +50,7 @@ export class SimulatorDriver implements GalvoDriver {
     mkdirSync(this.outDir, { recursive: true })
     const file = join(this.outDir, `job-${new Date().toISOString().replace(/[:.]/g, '-')}.svg`)
     writeFileSync(file, jobToSvg(job, this.fieldSize()))
+    this.lastJobFile = file
     // Simulate in real time, capped so testing stays quick.
     const total = Math.min(job.stats.estSeconds * 1000, 5000)
     const steps = 50

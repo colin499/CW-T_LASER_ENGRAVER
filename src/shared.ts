@@ -37,6 +37,8 @@ export interface CwtApi {
   frame(bounds: Bounds): Promise<void>
   run(job: Job, ticketId?: string): Promise<void>
   stop(): Promise<void>
+  /** Simulator only: show the last job SVG in Finder/Explorer. False if there is none yet. */
+  revealLastJob(): Promise<boolean>
   onLaserStatus(cb: (s: LaserStatus) => void): () => void
   /** Fired when a cwtlaser://ticket/<id> link opens the app */
   onOpenTicket(cb: (id: string) => void): () => void

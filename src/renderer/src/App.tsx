@@ -261,6 +261,9 @@ export function App() {
               {askDone ? (
                 <>
                   <div>Job complete. Mark {selected.orderNumber} as engraved?</div>
+                  {laser.driver === 'simulator' && (
+                    <button onClick={() => window.cwt.revealLastJob()}>Show job file (for LightBurn)</button>
+                  )}
                   <button className="primary" onClick={markDone}>
                     Mark done{demo ? ' (demo)' : ' + fulfil'}
                   </button>

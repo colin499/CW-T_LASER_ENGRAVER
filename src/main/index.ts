@@ -120,8 +120,9 @@ app.whenReady().then(() => {
   settings = loadSettings()
   mkdirSync(userFontsDir(), { recursive: true })
   const api = new EngraveApi(() => settings)
+  const simulator = new SimulatorDriver(join(app.getPath('userData'), 'jobs'), () => settings.fieldSize)
   const laser = new LaserController(
-    new SimulatorDriver(join(app.getPath('userData'), 'jobs'), () => settings.fieldSize),
+    simulator,
     (s) => win?.webContents.send('laser-status', s),
   )
 
@@ -147,6 +148,11 @@ app.whenReady().then(() => {
   ipcMain.handle('laser:frame', (_e, bounds: Bounds) => laser.frame(bounds))
   ipcMain.handle('laser:run', (_e, job: Job) => laser.run(job))
   ipcMain.handle('laser:stop', () => laser.stop())
+  ipcMain.handle('laser:revealLastJob', () => {
+    if (!simulator.lastJobFile) return false
+    shell.showItemInFolder(simulator.lastJobFile)
+    return true
+  })
 
   createWindow()
   const startUrl = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`))
