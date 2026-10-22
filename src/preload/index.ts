@@ -15,12 +15,14 @@ const api: CwtApi = {
   frame: (bounds) => ipcRenderer.invoke('laser:frame', bounds),
   run: (job) => ipcRenderer.invoke('laser:run', job),
   stop: () => ipcRenderer.invoke('laser:stop'),
+  connectLaser: () => ipcRenderer.invoke('laser:connect'),
   revealLastJob: () => ipcRenderer.invoke('laser:revealLastJob'),
   onLaserStatus: (cb) => {
     const h = (_e: unknown, s: LaserStatus) => cb(s)
     ipcRenderer.on('laser-status', h)
     return () => ipcRenderer.off('laser-status', h)
   },
+  takePendingTicket: () => ipcRenderer.invoke('tickets:takePending'),
   onOpenTicket: (cb) => {
     const h = (_e: unknown, id: string) => cb(id)
     ipcRenderer.on('open-ticket', h)

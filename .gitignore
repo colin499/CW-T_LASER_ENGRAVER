@@ -2,3 +2,6 @@ node_modules/
 out/
 dist/
 .DS_Store
+# LightBurn projects hold our material presets; keep them local (the slim reference is bundled at build time)
+*.lbrn
+*.lbrn2

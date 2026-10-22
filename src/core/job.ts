@@ -7,14 +7,18 @@ import type { LayerSettings } from './template'
 export type JobLayer = {
   name: string
   settings: LayerSettings
-  /** Ordered mark paths. Closed outlines repeat their first point at the end. */
+  /** Ordered mark paths (hatch baked in). Closed outlines repeat their first point at the end. */
   paths: Polyline[]
+  /** The un-hatched closed contours (first point not repeated), for drivers that fill themselves (LightBurn). */
+  contours: Polyline[]
 }
 
 export type Job = {
   layers: JobLayer[]
   bounds: Bounds
   stats: { markLength: number; jumpLength: number; estSeconds: number }
+  /** From the scene, used to name output files */
+  ticketId?: string
 }
 
 /** Galvo jumps are much faster than marks; used only for the time estimate. */
@@ -71,12 +75,13 @@ export function compileJob(scene: Scene): Job {
     markLength += layerMark * passes
     jumpLength += layerJump * passes
     estSeconds += passes * (layerMark / settings.speed + layerJump / JUMP_SPEED_MM_S)
-    layers.push({ name, settings, paths })
+    layers.push({ name, settings, paths, contours })
   }
 
   return {
     layers,
     bounds: isEmptyBounds(bounds) ? { minX: 0, minY: 0, maxX: 0, maxY: 0 } : bounds,
     stats: { markLength, jumpLength, estSeconds },
+    ticketId: scene.ticketId,
   }
 }

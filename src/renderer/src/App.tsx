@@ -16,6 +16,7 @@ import { ensureFonts, loadFont } from './fonts'
 import { SettingsDialog } from './SettingsDialog'
 
 const fmtTime = (s: number) => (s < 60 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`)
+const driverLabel: Record<string, string> = { simulator: 'Simulator', lightburn: 'LightBurn', lmc: 'Laser' }
 const errMsg = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
 
 export function App() {
@@ -30,7 +31,8 @@ export function App() {
   const [layerEdits, setLayerEdits] = useState<Record<string, Partial<LayerSettings>>>({})
   const [showHatch, setShowHatch] = useState(false)
   const [laser, setLaser] = useState<LaserStatus>({ state: 'idle', driver: 'simulator' })
-  const [askDone, setAskDone] = useState(false)
+  /** What to show after a run: the laser finished, or the job was handed to LightBurn */
+  const [postRun, setPostRun] = useState<'complete' | 'sent' | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [pendingId, setPendingId] = useState<string | null>(null)
@@ -66,11 +68,15 @@ export function App() {
     setSelected(t)
     setLineEdits({})
     setLayerEdits({})
-    setAskDone(false)
+    setPostRun(null)
   }, [])
 
   // cwtlaser://ticket/<id> from the web queue's "Send to laser" button. Held until the queue has loaded.
-  useEffect(() => window.cwt.onOpenTicket(setPendingId), [])
+  useEffect(() => {
+    const off = window.cwt.onOpenTicket(setPendingId)
+    window.cwt.takePendingTicket().then((id) => id && setPendingId(id))
+    return off
+  }, [])
   useEffect(() => {
     if (!pendingId || !loaded) return
     setPendingId(null)
@@ -100,6 +106,7 @@ export function App() {
 
   const job = useMemo(() => (scene ? compileJob(scene) : null), [scene])
   const busy = laser.state === 'framing' || laser.state === 'running'
+  const lightburn = laser.driver === 'lightburn'
 
   const run = async () => {
     if (!job) return
@@ -107,7 +114,9 @@ export function App() {
     try {
       await window.cwt.run(job)
       const s = await window.cwt.laserStatus()
-      if (s.message === 'Job complete' && selected) setAskDone(true)
+      if (!selected) return
+      if (s.message === 'Job complete') setPostRun('complete')
+      else if (s.message === 'Loaded in LightBurn') setPostRun('sent')
     } catch (e) {
       setError(errMsg(e))
     }
@@ -119,7 +128,7 @@ export function App() {
       if (!demo) await window.cwt.markDone(selected.id)
       setTickets((ts) => ts.filter((t) => t.id !== selected.id))
       setSelected(null)
-      setAskDone(false)
+      setPostRun(null)
     } catch (e) {
       setError(errMsg(e))
     }
@@ -134,12 +143,19 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <strong>CW&amp;T Laser</strong>
-        <span className={`pill ${laser.state}`}>
-          {laser.driver === 'simulator' ? 'Simulator' : 'Laser'} · {laser.state}
+        <span className="wordmark">
+          CW&amp;T <span>Laser</span>
+        </span>
+        <span className={`pill ${laser.state}`} title={laser.message}>
+          {driverLabel[laser.driver] ?? laser.driver} · {laser.state === 'disconnected' ? 'not reachable' : laser.state}
           {laser.state === 'running' && laser.progress !== undefined && ` ${Math.round(laser.progress * 100)}%`}
         </span>
-        {demo && <span className="pill warn">Demo tickets — add an API token in Settings</span>}
+        {lightburn && laser.connected === false && (
+          <button className="small" onClick={() => window.cwt.connectLaser().then(setLaser)} title={laser.message}>
+            Retry LightBurn
+          </button>
+        )}
+        {demo && <span className="pill">demo tickets · add an API token in Settings</span>}
         <span className="spacer" />
         <button onClick={() => settings && refresh(settings)}>Refresh</button>
         <button onClick={() => setSettingsOpen(true)}>Settings</button>
@@ -153,7 +169,7 @@ export function App() {
 
       <aside className="queue">
         <input className="search" placeholder="Search queue…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-        <div className="queue-count">{visible.length} open</div>
+        <div className="queue-count label">{visible.length} open</div>
         {visible.map((t) => {
           const m = matchTemplate(templates, t.sku)
           return (
@@ -210,10 +226,10 @@ export function App() {
             )}
 
             <section>
-              <h4>Engraving</h4>
+              <h4 className="label">Engraving</h4>
               {parseEngravingLines(selected.engravingText).map((l, i) => (
                 <label key={i} className="field-row">
-                  <span className="muted small">{l.key || 'text'}</span>
+                  <span className="label">{l.key || 'text'}</span>
                   <input
                     value={lineEdits[i] ?? l.value}
                     onChange={(e) => setLineEdits((le) => ({ ...le, [i]: e.target.value }))}
@@ -224,8 +240,8 @@ export function App() {
 
             {Object.entries(scene.template.layers).map(([name, l]) => (
               <section key={name}>
-                <h4>
-                  <span className="swatch" style={{ background: l.color }} /> Layer “{name}” · {l.mode}
+                <h4 className="label">
+                  <span className="swatch" style={{ background: l.color }} /> Layer {name} · {l.mode}
                 </h4>
                 <div className="grid2">
                   <Num label="Power %" value={l.power} onChange={(power) => editLayer(name, { power })} />
@@ -258,16 +274,21 @@ export function App() {
             </section>
 
             <section className="actions">
-              {askDone ? (
+              {postRun ? (
                 <>
-                  <div>Job complete. Mark {selected.orderNumber} as engraved?</div>
-                  {laser.driver === 'simulator' && (
-                    <button onClick={() => window.cwt.revealLastJob()}>Show job file (for LightBurn)</button>
+                  <div>
+                    {postRun === 'sent'
+                      ? `Loaded in LightBurn. Frame and press Start there. When ${selected.orderNumber} is engraved:`
+                      : `Job complete. Mark ${selected.orderNumber} as engraved?`}
+                  </div>
+                  {laser.driver !== 'lmc' && (
+                    <button onClick={() => window.cwt.revealLastJob()}>Show job file{postRun === 'sent' ? '' : ' (for LightBurn)'}</button>
                   )}
+                  {postRun === 'sent' && <button onClick={run}>Send again</button>}
                   <button className="primary" onClick={markDone}>
                     Mark done{demo ? ' (demo)' : ' + fulfil'}
                   </button>
-                  <button onClick={() => setAskDone(false)}>Not yet</button>
+                  <button onClick={() => setPostRun(null)}>Not yet</button>
                 </>
               ) : busy ? (
                 <button className="danger" onClick={() => window.cwt.stop()}>
@@ -275,11 +296,15 @@ export function App() {
                 </button>
               ) : (
                 <>
-                  <button disabled={!job?.layers.length} onClick={() => job && window.cwt.frame(job.bounds).catch((e) => setError(errMsg(e)))}>
-                    Frame
-                  </button>
+                  {lightburn ? (
+                    <span className="label">Frame in LightBurn after sending</span>
+                  ) : (
+                    <button disabled={!job?.layers.length} onClick={() => job && window.cwt.frame(job.bounds).catch((e) => setError(errMsg(e)))}>
+                      Frame
+                    </button>
+                  )}
                   <button className="primary" disabled={!job?.layers.length} onClick={run}>
-                    Start
+                    {lightburn ? 'Send to LightBurn' : 'Start'}
                   </button>
                 </>
               )}
@@ -310,7 +335,7 @@ export function App() {
 function Num({ label, value, onChange, step = 'any' }: { label: string; value: number; onChange: (n: number) => void; step?: number | 'any' }) {
   return (
     <label className="field-row">
-      <span className="muted small">{label}</span>
+      <span className="label">{label}</span>
       <input
         type="number"
         step={step}

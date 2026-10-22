@@ -32,6 +32,16 @@ export type LayerSettings = {
   outline?: boolean
   /** Colour used on screen */
   color?: string
+  /**
+   * LightBurn only: name of a layer in the reference project (resources/lightburn/reference.lbrn2),
+   * e.g. "BRASS". Its settings are the base for this layer; the values above are written on top.
+   */
+  preset?: string
+  /**
+   * Extra LightBurn cut-setting tags written verbatim (tag name → Value), applied after the mapped
+   * settings. For galvo-only tags such as delays or jump speed, e.g. { "laserOnDelay": 100 }.
+   */
+  extra?: Record<string, string | number | boolean>
 }
 
 export type Slot = {

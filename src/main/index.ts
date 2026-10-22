@@ -1,10 +1,12 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type { Bounds, Job, ProductTemplate } from '../core'
+import { type Bounds, type Job, type ProductTemplate, type ReferenceCutSettings, parseReferenceCutSettings } from '../core'
 import type { Settings } from '../shared'
 import { EngraveApi } from './api'
 import { LaserController } from './galvo/controller'
+import type { GalvoDriver } from './galvo/driver'
+import { LightBurnDriver } from './galvo/lightburn'
 import { SimulatorDriver } from './galvo/simulator'
 import { loadSettings, saveSettings } from './settings'
 
@@ -12,6 +14,9 @@ const PROTOCOL = 'cwtlaser'
 
 const resourcesDir = () => (app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'))
 const userFontsDir = () => join(app.getPath('userData'), 'fonts')
+
+// Dev: CWT_USER_DATA=<dir> keeps settings and jobs out of the real app data folder.
+if (process.env.CWT_USER_DATA) app.setPath('userData', process.env.CWT_USER_DATA)
 
 let settings: Settings
 let win: BrowserWindow | null = null
@@ -68,12 +73,13 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 640,
     title: 'CW&T Laser',
-    backgroundColor: '#f6f5f2',
+    backgroundColor: '#ffffff',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 14, y: 14 },
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false },
   })
   win.webContents.on('did-finish-load', () => {
     if (pendingTicketId) win?.webContents.send('open-ticket', pendingTicketId)
-    pendingTicketId = null
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
@@ -116,18 +122,67 @@ function fontPath(name: string): string {
   throw new Error(`Font not found: ${name}`)
 }
 
+/**
+ * Cut settings saved from our galvo LightBurn, used as the base for every layer we send it.
+ * userData/lightburn/reference.lbrn2 overrides the bundled resources/lightburn/reference.lbrn2.
+ */
+function loadReference(): ReferenceCutSettings | null {
+  for (const p of [join(app.getPath('userData'), 'lightburn/reference.lbrn2'), join(resourcesDir(), 'lightburn/reference.lbrn2')]) {
+    if (!existsSync(p)) continue
+    try {
+      const ref = parseReferenceCutSettings(readFileSync(p, 'utf8'))
+      console.log(`LightBurn reference: ${p} (${Object.keys(ref.byName).length} layers)`)
+      return ref
+    } catch (e) {
+      console.error(`Could not read ${p}:`, e)
+    }
+  }
+  return null
+}
+
+function buildDriver(): GalvoDriver {
+  const jobsDir = join(app.getPath('userData'), 'jobs')
+  if (settings.driver === 'lightburn') {
+    const reference = loadReference()
+    // Options are read per call, so edits other than the driver itself apply without a rebuild.
+    return new LightBurnDriver(() => ({
+      host: settings.lightburnHost || '127.0.0.1',
+      port: settings.lightburnPort || 19840,
+      replyPort: (settings.lightburnPort || 19840) + 1,
+      outDir: settings.lightburnOutputDir || jobsDir,
+      yFlip: settings.lightburnFlipY,
+      offset: settings.lightburnOffset ?? [0, 0],
+      reference,
+      timeoutMs: 3000,
+    }))
+  }
+  return new SimulatorDriver(jobsDir, () => settings.fieldSize)
+}
+
 app.whenReady().then(() => {
   settings = loadSettings()
   mkdirSync(userFontsDir(), { recursive: true })
   const api = new EngraveApi(() => settings)
-  const simulator = new SimulatorDriver(join(app.getPath('userData'), 'jobs'), () => settings.fieldSize)
-  const laser = new LaserController(
-    simulator,
-    (s) => win?.webContents.send('laser-status', s),
-  )
+  const laser = new LaserController(buildDriver(), (s) => win?.webContents.send('laser-status', s))
+  laser.connect()
+  // LightBurn can be opened or closed at any time; keep the status pill honest.
+  setInterval(() => {
+    if (settings.driver === 'lightburn' && !laser.busy) laser.connect()
+  }, 10_000)
 
   ipcMain.handle('settings:get', () => settings)
-  ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => (settings = saveSettings(patch)))
+  ipcMain.handle('settings:set', async (_e, patch: Partial<Settings>) => {
+    const prevDriver = settings.driver
+    settings = saveSettings(patch)
+    if (settings.driver !== prevDriver) await laser.setDriver(buildDriver())
+    else if (settings.driver === 'lightburn') laser.connect()
+    return settings
+  })
+  ipcMain.handle('tickets:takePending', () => {
+    const id = pendingTicketId
+    pendingTicketId = null
+    return id
+  })
   ipcMain.handle('tickets:list', (_e, status?: 'open' | 'done') => api.listTickets(status))
   ipcMain.handle('tickets:get', (_e, id: string) => api.getTicket(id))
   ipcMain.handle('tickets:done', (_e, id: string) => api.markDone(id))
@@ -148,9 +203,11 @@ app.whenReady().then(() => {
   ipcMain.handle('laser:frame', (_e, bounds: Bounds) => laser.frame(bounds))
   ipcMain.handle('laser:run', (_e, job: Job) => laser.run(job))
   ipcMain.handle('laser:stop', () => laser.stop())
+  ipcMain.handle('laser:connect', () => laser.connect())
   ipcMain.handle('laser:revealLastJob', () => {
-    if (!simulator.lastJobFile) return false
-    shell.showItemInFolder(simulator.lastJobFile)
+    const file = laser.current.lastJobFile
+    if (!file) return false
+    shell.showItemInFolder(file)
     return true
   })
 

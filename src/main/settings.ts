@@ -9,6 +9,11 @@ const defaults: Settings = {
   useLocalTemplates: true,
   fieldSize: 110,
   driver: 'simulator',
+  lightburnHost: '127.0.0.1',
+  lightburnPort: 19840,
+  lightburnFlipY: false,
+  lightburnOffset: [0, 0],
+  lightburnOutputDir: '',
 }
 
 const file = () => join(app.getPath('userData'), 'settings.json')
